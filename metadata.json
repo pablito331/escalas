@@ -1,0 +1,6 @@
+{
+  "name": "EscalaLouvor",
+  "description": "Aplicativo para gestão de escalas de louvor e ministérios de igreja, integrado ao Google Sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
