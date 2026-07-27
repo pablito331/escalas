@@ -153,7 +153,7 @@ export default function App() {
       const info = await carregarMinisterioInfo(sheetId, token);
       setMinisterio(info);
 
-      if (!permissao.aprovado) {
+      if (!permissao.aprovado && permissao.role !== 'lider') {
         setSession({ stage: 'aguardando_aprovacao', ministerio: info });
         return;
       }
@@ -306,9 +306,13 @@ export default function App() {
       const jaExiste = await buscarPermissaoUsuario(sheetId, accessToken, user.email);
 
       if (!jaExiste) {
+        // Busca o nome do ministério da planilha antes de registrar
+        const infoPrevia = await carregarMinisterioInfo(sheetId, accessToken);
         const permissao = {
           email: user.email, nome: user.name, role: 'membro' as const,
-          spreadsheet_id: sheetId, ministerio_nome: '', ministerio_codigo: codigo,
+          spreadsheet_id: sheetId,
+          ministerio_nome: infoPrevia.nome || '',
+          ministerio_codigo: codigo,
           aprovado: false,
         };
         await registrarUsuario(sheetId, accessToken, permissao, user.picture || '');
