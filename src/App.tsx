@@ -40,7 +40,6 @@ const STORAGE_KEYS = {
   SPREADSHEET_ID: 'escalalouvor_spreadsheet_id',
   ACCESS_TOKEN: 'escalalouvor_access_token',
   USER_PROFILE: 'escalalouvor_user_profile',
-  APP_DATA: 'escalalouvor_app_data_v1',
   MINISTERIO: 'escalalouvor_ministerio',
 };
 
@@ -54,12 +53,7 @@ export default function App() {
   const [selectedEscalaId, setSelectedEscalaId] = useState<string | null>(null);
   const [editingEscalaId, setEditingEscalaId] = useState<string | null>(null);
 
-  const [appData, setAppData] = useState<AppDataState>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.APP_DATA);
-      return saved ? JSON.parse(saved) : INITIAL_APP_DATA;
-    } catch { return INITIAL_APP_DATA; }
-  });
+  const [appData, setAppData] = useState<AppDataState>(INITIAL_APP_DATA);
 
   const [user, setUser] = useState<GoogleUserProfile | null>(() => {
     try {
@@ -87,17 +81,14 @@ export default function App() {
   const [isVerificando, setIsVerificando] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Persiste dados
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.APP_DATA, JSON.stringify(appData));
-  }, [appData]);
-
+  // Persiste apenas o ministério e token no localStorage
   useEffect(() => {
     if (ministerio) localStorage.setItem(STORAGE_KEYS.MINISTERIO, JSON.stringify(ministerio));
     else localStorage.removeItem(STORAGE_KEYS.MINISTERIO);
@@ -107,10 +98,15 @@ export default function App() {
   useEffect(() => {
     const handler = (e: Event) => { e.preventDefault(); setDeferredPrompt(e); setIsInstallable(true); };
     window.addEventListener('beforeinstallprompt', handler);
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/escalas/sw.js').catch(() => {});
-    }
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
   }, []);
 
   const handleInstallPwa = async () => {
@@ -260,6 +256,7 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
     localStorage.removeItem(STORAGE_KEYS.SPREADSHEET_ID);
     localStorage.removeItem(STORAGE_KEYS.MINISTERIO);
+    localStorage.removeItem('escalalouvor_app_data_v1'); // limpa cache antigo
     firebaseLogout().catch(() => {});
     setSession({ stage: 'login' });
   };
@@ -621,6 +618,13 @@ export default function App() {
         <div className="fixed top-4 right-4 z-50 bg-amber-500 text-slate-950 px-4 py-3 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 border border-amber-400">
           <Check className="w-4 h-4 stroke-[3]" />
           <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-slate-800 text-slate-300 text-xs font-semibold text-center py-1.5 flex items-center justify-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-rose-400 inline-block"></span>
+          Modo offline — mostrando dados salvos localmente
         </div>
       )}
 

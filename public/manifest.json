@@ -1,22 +1,21 @@
 {
   "short_name": "EscalaLouvor",
-  "name": "EscalaLouvor - Gestão de Escalas e Ministérios",
+  "name": "EscalaLouvor - Gestão de Ministérios",
+  "description": "Organize escalas, repertório e equipe do seu ministério de louvor",
   "icons": [
     {
-      "src": "pwa-192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "pwa-512.png",
-      "type": "image/png",
-      "sizes": "512x512"
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
     }
   ],
   "start_url": "/escalas/",
+  "scope": "/escalas/",
   "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "theme_color": "#f59e0b",
   "display": "standalone",
   "orientation": "portrait",
-  "lang": "pt-BR"
+  "lang": "pt-BR",
+  "categories": ["productivity", "utilities"]
 }
