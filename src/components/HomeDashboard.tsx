@@ -21,10 +21,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onConfirmPresence,
   onCreateEscala,
 }) => {
-  // Find current logged-in member ID by matching email, or fallback to first member
+  // Find current logged-in member ID by matching email only — no fallback to mock data
   const loggedMember = appData.membros.find(
     m => user?.email && m.email.toLowerCase() === user.email.toLowerCase()
-  ) || appData.membros[0];
+  ) || null;
 
   // Find upcoming schedule where loggedMember is scheduled
   const myEscalados = appData.escalados.filter(e => e.membro_id === loggedMember?.id);
