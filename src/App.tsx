@@ -3,16 +3,27 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { 
-  ActiveTab, AppDataState, Escala, Escalado, GoogleUserProfile, 
-  Indisponibilidade, Membro, Musica, MusicaEscala, StatusConfirmacao 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  ActiveTab, AppDataState, Escala, Escalado, GoogleUserProfile,
+  Indisponibilidade, Membro, Musica, MusicaEscala, StatusConfirmacao,
+  AppSession, MinisterioInfo, SUPER_ADMIN_EMAIL,
 } from './types';
 import { INITIAL_APP_DATA } from './data/mockData';
-import { 
-  createDefaultSpreadsheet, fetchSpreadsheetData, writeFullAppDataToSheet 
+import {
+  createDefaultSpreadsheet, fetchSpreadsheetData, writeFullAppDataToSheet,
 } from './services/googleSheets';
-import { googleSignInWithFirebase, getOAuthClientId, logout as firebaseLogout } from './services/firebaseAuth';
+import {
+  googleSignInWithFirebase, getOAuthClientId, logout as firebaseLogout,
+} from './services/firebaseAuth';
+import {
+  registrarUsuario, buscarPermissaoUsuario, carregarMinisterioInfo,
+  gerarTokenConvite, garantirAbaPermissoes,
+} from './services/permissoes';
+import { LoginView } from './components/LoginView';
+import { OnboardingView } from './components/OnboardingView';
+import { AguardandoView } from './components/AguardandoView';
+import { SuperAdminView } from './components/SuperAdminView';
 import { Navbar } from './components/Navbar';
 import { HomeDashboard } from './components/HomeDashboard';
 import { EscalasList } from './components/EscalasList';
@@ -23,346 +34,365 @@ import { MembrosView } from './components/MembrosView';
 import { DisponibilidadeView } from './components/DisponibilidadeView';
 import { SetupView } from './components/SetupView';
 import { PerfilView } from './components/PerfilView';
-import { Check, AlertCircle } from 'lucide-react';
+import { Check } from 'lucide-react';
 
 const STORAGE_KEYS = {
   SPREADSHEET_ID: 'escalalouvor_spreadsheet_id',
   ACCESS_TOKEN: 'escalalouvor_access_token',
   USER_PROFILE: 'escalalouvor_user_profile',
   APP_DATA: 'escalalouvor_app_data_v1',
-  IS_LEADER: 'escalalouvor_is_leader',
+  MINISTERIO: 'escalalouvor_ministerio',
 };
 
-// Declare window.google type for GIS client
 declare global {
-  interface Window {
-    google?: any;
-  }
+  interface Window { google?: any; }
 }
 
 export default function App() {
+  const [session, setSession] = useState<AppSession>({ stage: 'loading' });
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [selectedEscalaId, setSelectedEscalaId] = useState<string | null>(null);
   const [editingEscalaId, setEditingEscalaId] = useState<string | null>(null);
 
-  // App Data State
   const [appData, setAppData] = useState<AppDataState>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.APP_DATA);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse cached app data', e);
-      }
-    }
-    return INITIAL_APP_DATA;
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.APP_DATA);
+      return saved ? JSON.parse(saved) : INITIAL_APP_DATA;
+    } catch { return INITIAL_APP_DATA; }
   });
 
-  // User & OAuth State
   const [user, setUser] = useState<GoogleUserProfile | null>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-    return saved ? JSON.parse(saved) : {
-      email: 'pablocostaguimaraes@gmail.com',
-      name: 'Pablo Guimarães',
-      picture: '',
-    };
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
   });
 
   const [accessToken, setAccessToken] = useState<string | null>(
-    localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
+    () => localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
   );
-
   const [spreadsheetId, setSpreadsheetId] = useState<string | null>(
-    localStorage.getItem(STORAGE_KEYS.SPREADSHEET_ID)
+    () => localStorage.getItem(STORAGE_KEYS.SPREADSHEET_ID)
   );
-
-  const [isLeader, setIsLeader] = useState<boolean>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.IS_LEADER);
-    return saved !== null ? JSON.parse(saved) : true;
+  const [ministerio, setMinisterio] = useState<MinisterioInfo | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.MINISTERIO);
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
   });
 
-  // UI Status State
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  // PWA Install Prompt State
+  const [isVerificando, setIsVerificando] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [isInstallable, setIsInstallable] = useState<boolean>(false);
-
-  // Save changes to localStorage on data state update
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.APP_DATA, JSON.stringify(appData));
-  }, [appData]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.IS_LEADER, JSON.stringify(isLeader));
-  }, [isLeader]);
-
-  // Ensure active user (Leader) is present in Membros list
-  useEffect(() => {
-    if (!user || !user.email) return;
-
-    setAppData(prev => {
-      const userEmailLower = user.email.toLowerCase();
-      const existingMemberIndex = prev.membros.findIndex(
-        m => m.email.toLowerCase() === userEmailLower
-      );
-
-      if (existingMemberIndex !== -1) {
-        const existing = prev.membros[existingMemberIndex];
-        let changed = false;
-        let updated = { ...existing };
-
-        if (user.name && existing.nome !== user.name && (existing.nome === 'Gabriel Santos' || existing.id === 'm1')) {
-          updated.nome = user.name;
-          changed = true;
-        }
-        if (!existing.funcoes.includes('Líder')) {
-          updated.funcoes = ['Líder', ...existing.funcoes];
-          changed = true;
-        }
-
-        if (changed) {
-          const updatedMembros = [...prev.membros];
-          updatedMembros[existingMemberIndex] = updated;
-          const nextData = { ...prev, membros: updatedMembros };
-          syncToSheetIfConnected(nextData);
-          return nextData;
-        }
-        return prev;
-      } else {
-        const newLeaderMembro: Membro = {
-          id: `mem_leader_${Date.now()}`,
-          nome: user.name || 'Líder de Louvor',
-          email: user.email,
-          telefone: '',
-          funcoes: ['Líder', 'Ministro', 'Vocal'],
-          ministerio: 'Louvor',
-          ativo: true,
-        };
-        const nextData = {
-          ...prev,
-          membros: [newLeaderMembro, ...prev.membros],
-        };
-        syncToSheetIfConnected(nextData);
-        return nextData;
-      }
-    });
-  }, [user]);
-
-  // PWA BeforeInstallPrompt Handler
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setIsInstallable(true);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    // Register Service Worker
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(err => {
-        console.log('SW registration error:', err);
-      });
-    }
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
-  }, []);
-
-  const handleInstallPwa = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setIsInstallable(false);
-    }
-    setDeferredPrompt(null);
-  };
+  const [isInstallable, setIsInstallable] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Google OAuth Login Flow via Firebase Auth popup & GIS fallback
+  // Persiste dados
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.APP_DATA, JSON.stringify(appData));
+  }, [appData]);
+
+  useEffect(() => {
+    if (ministerio) localStorage.setItem(STORAGE_KEYS.MINISTERIO, JSON.stringify(ministerio));
+    else localStorage.removeItem(STORAGE_KEYS.MINISTERIO);
+  }, [ministerio]);
+
+  // PWA
+  useEffect(() => {
+    const handler = (e: Event) => { e.preventDefault(); setDeferredPrompt(e); setIsInstallable(true); };
+    window.addEventListener('beforeinstallprompt', handler);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/escalas/sw.js').catch(() => {});
+    }
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallPwa = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') setIsInstallable(false);
+    setDeferredPrompt(null);
+  };
+
+  // ── Determinar sessão ao iniciar ──────────────────────────────────────────
+  const resolverSessao = useCallback(async (
+    u: GoogleUserProfile,
+    token: string,
+    sheetId: string | null
+  ) => {
+    // Super admin
+    if (u.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+      setSession({ stage: 'super_admin' });
+      return;
+    }
+
+    // Sem planilha → onboarding
+    if (!sheetId) {
+      setSession({ stage: 'onboarding' });
+      return;
+    }
+
+    // Tem planilha → verifica permissão
+    try {
+      await garantirAbaPermissoes(sheetId, token);
+      const permissao = await buscarPermissaoUsuario(sheetId, token, u.email);
+
+      if (!permissao) {
+        // Usuário tem planilha mas não está registrado → onboarding
+        setSession({ stage: 'onboarding' });
+        return;
+      }
+
+      const info = await carregarMinisterioInfo(sheetId, token);
+      setMinisterio(info);
+
+      if (!permissao.aprovado) {
+        setSession({ stage: 'aguardando_aprovacao', ministerio: info });
+        return;
+      }
+
+      setSession({ stage: 'app', role: permissao.role, ministerio: info });
+    } catch (e) {
+      setSession({ stage: 'onboarding' });
+    }
+  }, []);
+
+  // Ao montar: se já tem token e user, resolve sessão
+  useEffect(() => {
+    if (user && accessToken && accessToken !== 'local-demo') {
+      resolverSessao(user, accessToken, spreadsheetId);
+    } else if (user && accessToken === 'local-demo') {
+      setSession({ stage: 'app', role: 'lider', ministerio: ministerio || {
+        spreadsheet_id: 'local',
+        nome: 'Modo Local',
+        codigo: 'LOCAL',
+        lider_email: user.email,
+        lider_nome: user.name,
+        membros: [],
+      }});
+    } else {
+      setSession({ stage: 'login' });
+    }
+  }, []);
+
+  // ── Login Google ──────────────────────────────────────────────────────────
   const handleGoogleLogin = async () => {
     setIsLoading(true);
+    setErrorMessage(null);
     try {
-      // 1. Primary path: Firebase Auth popup with Google Provider & scopes
       const result = await googleSignInWithFirebase();
-      if (result && result.accessToken) {
+      if (result?.accessToken) {
         setAccessToken(result.accessToken);
         setUser(result.user);
         localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, result.accessToken);
         localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(result.user));
-        showToast(`Bem-vindo, ${result.user.name}! Conectado com sucesso ao Google.`);
-        setIsLoading(false);
-        return;
+        await resolverSessao(result.user, result.accessToken, spreadsheetId);
       }
     } catch (firebaseErr: any) {
-      console.warn('Firebase popup login failed, trying GIS client fallback:', firebaseErr);
-
-      // 2. Fallback: GIS client with valid OAuth Client ID from firebase config
       const clientId = getOAuthClientId();
       if (window.google?.accounts?.oauth2 && clientId) {
-        try {
-          const client = window.google.accounts.oauth2.initTokenClient({
-            client_id: clientId,
-            scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/drive.file',
-            callback: async (response: any) => {
-              setIsLoading(false);
-              if (response.error) {
-                showToast('Aviso de autenticação Google: ' + (response.error_description || response.error));
-                return;
-              }
-              if (response.access_token) {
-                setAccessToken(response.access_token);
-                localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.access_token);
-
-                try {
-                  const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                    headers: { Authorization: `Bearer ${response.access_token}` },
-                  });
-                  if (userRes.ok) {
-                    const userData = await userRes.json();
-                    const profile: GoogleUserProfile = {
-                      email: userData.email,
-                      name: userData.name,
-                      picture: userData.picture,
-                    };
-                    setUser(profile);
-                    localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
-                  }
-                } catch (e) {
-                  console.error('Error fetching user info', e);
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/drive.file',
+          callback: async (response: any) => {
+            setIsLoading(false);
+            if (response.access_token) {
+              setAccessToken(response.access_token);
+              localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.access_token);
+              try {
+                const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                  headers: { Authorization: `Bearer ${response.access_token}` },
+                });
+                if (userRes.ok) {
+                  const ud = await userRes.json();
+                  const profile: GoogleUserProfile = { email: ud.email, name: ud.name, picture: ud.picture };
+                  setUser(profile);
+                  localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
+                  await resolverSessao(profile, response.access_token, spreadsheetId);
                 }
-
-                showToast('Autenticação Google concluída com sucesso!');
-              }
-            },
-            error_callback: () => {
-              setIsLoading(false);
-              showToast('Serviço de login cancelado.');
-            },
-          });
-          client.requestAccessToken();
-          return;
-        } catch (e) {
-          console.error('GIS fallback error:', e);
-        }
+              } catch {}
+            }
+          },
+          error_callback: () => { setIsLoading(false); },
+        });
+        client.requestAccessToken();
+        return;
       }
+      setErrorMessage(firebaseErr?.message || 'Erro ao fazer login.');
+    } finally {
       setIsLoading(false);
-      showToast(firebaseErr?.message || 'Não foi possível completar o login do Google.');
     }
-  };
-
-  const handleUseLocalMode = () => {
-    setAccessToken('local-demo');
-    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, 'local-demo');
-    if (!user) {
-      const demoProfile: GoogleUserProfile = {
-        name: 'Usuário Líder / Local',
-        email: 'lider.louvor@igreja.com',
-        picture: '',
-      };
-      setUser(demoProfile);
-      localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(demoProfile));
-    }
-    showToast('Modo Local ativado com sucesso!');
   };
 
   const handleLogout = () => {
     setUser(null);
     setAccessToken(null);
+    setSpreadsheetId(null);
+    setMinisterio(null);
     localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+    localStorage.removeItem(STORAGE_KEYS.SPREADSHEET_ID);
+    localStorage.removeItem(STORAGE_KEYS.MINISTERIO);
     firebaseLogout().catch(() => {});
-    showToast('Você saiu da conta.');
+    setSession({ stage: 'login' });
   };
 
-  // Sync to Google Sheet Helper
-  const syncToSheetIfConnected = async (newData: AppDataState) => {
-    if (spreadsheetId && accessToken && accessToken !== 'local-demo') {
-      try {
-        await writeFullAppDataToSheet(spreadsheetId, accessToken, newData);
-      } catch (e: any) {
-        console.error('Failed to auto-sync to Google Sheet:', e);
-      }
-    }
+  const handleUseLocalMode = () => {
+    const demoProfile: GoogleUserProfile = { name: 'Líder Local', email: 'lider@local.com', picture: '' };
+    setUser(demoProfile);
+    setAccessToken('local-demo');
+    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, 'local-demo');
+    localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(demoProfile));
+    const localMin: MinisterioInfo = {
+      spreadsheet_id: 'local', nome: 'Modo Local', codigo: 'LOCAL',
+      lider_email: demoProfile.email, lider_nome: demoProfile.name, membros: [],
+    };
+    setMinisterio(localMin);
+    setSession({ stage: 'app', role: 'lider', ministerio: localMin });
   };
 
-  // 1-Click Create Spreadsheet Handler
-  const handleCreateNewSpreadsheet = async () => {
-    if (!accessToken) {
-      handleGoogleLogin();
-      return;
-    }
-
+  // ── Criar ministério ──────────────────────────────────────────────────────
+  const handleCriarMinisterio = async (nome: string, codigo: string) => {
+    if (!user || !accessToken) return;
     setIsLoading(true);
     setErrorMessage(null);
-
     try {
       const { id } = await createDefaultSpreadsheet(accessToken);
       setSpreadsheetId(id);
       localStorage.setItem(STORAGE_KEYS.SPREADSHEET_ID, id);
-      showToast('✨ Nova planilha criada com sucesso no seu Google Drive!');
-      setActiveTab('home');
+
+      const permissao = {
+        email: user.email,
+        nome: user.name,
+        role: 'lider' as const,
+        spreadsheet_id: id,
+        ministerio_nome: nome,
+        ministerio_codigo: codigo,
+        aprovado: true,
+      };
+      await registrarUsuario(id, accessToken, permissao, user.picture || '');
+
+      const info: MinisterioInfo = {
+        spreadsheet_id: id, nome, codigo,
+        lider_email: user.email, lider_nome: user.name,
+        membros: [permissao],
+      };
+      setMinisterio(info);
+
+      const token = gerarTokenConvite(id, codigo);
+      showToast(`Ministério criado! Código de convite: ${token}`);
+      setSession({ stage: 'app', role: 'lider', ministerio: info });
     } catch (e: any) {
-      console.error(e);
-      setErrorMessage(e.message || 'Erro ao criar planilha');
+      setErrorMessage(e.message || 'Erro ao criar ministério.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Load / Connect Existing Spreadsheet Handler
-  const handleSaveSpreadsheetId = async (id: string) => {
-    if (!accessToken) {
-      handleGoogleLogin();
-      return;
-    }
-
+  // ── Entrar em ministério existente ────────────────────────────────────────
+  const handleEntrarMinisterio = async (sheetId: string, codigo: string) => {
+    if (!user || !accessToken) return;
     setIsLoading(true);
     setErrorMessage(null);
+    try {
+      await garantirAbaPermissoes(sheetId, accessToken);
+      const jaExiste = await buscarPermissaoUsuario(sheetId, accessToken, user.email);
 
+      if (!jaExiste) {
+        const permissao = {
+          email: user.email, nome: user.name, role: 'membro' as const,
+          spreadsheet_id: sheetId, ministerio_nome: '', ministerio_codigo: codigo,
+          aprovado: false,
+        };
+        await registrarUsuario(sheetId, accessToken, permissao, user.picture || '');
+      }
+
+      setSpreadsheetId(sheetId);
+      localStorage.setItem(STORAGE_KEYS.SPREADSHEET_ID, sheetId);
+      const info = await carregarMinisterioInfo(sheetId, accessToken);
+      setMinisterio(info);
+
+      const permissaoAtual = await buscarPermissaoUsuario(sheetId, accessToken, user.email);
+      if (permissaoAtual?.aprovado) {
+        setSession({ stage: 'app', role: permissaoAtual.role, ministerio: info });
+      } else {
+        setSession({ stage: 'aguardando_aprovacao', ministerio: info });
+      }
+    } catch (e: any) {
+      setErrorMessage('Código inválido ou planilha inacessível. Verifique com seu líder.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ── Verificar aprovação ───────────────────────────────────────────────────
+  const handleVerificarAprovacao = async () => {
+    if (!user || !accessToken || !spreadsheetId) return;
+    setIsVerificando(true);
+    try {
+      const permissao = await buscarPermissaoUsuario(spreadsheetId, accessToken, user.email);
+      if (permissao?.aprovado && ministerio) {
+        setSession({ stage: 'app', role: permissao.role, ministerio });
+        showToast('Acesso aprovado! Bem-vindo ao ministério.');
+      } else {
+        showToast('Ainda aguardando aprovação do líder.');
+      }
+    } catch {}
+    setIsVerificando(false);
+  };
+
+  // ── Sync & dados ──────────────────────────────────────────────────────────
+  const syncToSheetIfConnected = async (newData: AppDataState) => {
+    if (spreadsheetId && accessToken && accessToken !== 'local-demo') {
+      try { await writeFullAppDataToSheet(spreadsheetId, accessToken, newData); } catch {}
+    }
+  };
+
+  const handleCreateNewSpreadsheet = async () => {
+    if (!accessToken) { handleGoogleLogin(); return; }
+    setIsLoading(true);
+    try {
+      const { id } = await createDefaultSpreadsheet(accessToken);
+      setSpreadsheetId(id);
+      localStorage.setItem(STORAGE_KEYS.SPREADSHEET_ID, id);
+      showToast('Nova planilha criada com sucesso!');
+      setActiveTab('home');
+    } catch (e: any) {
+      setErrorMessage(e.message || 'Erro ao criar planilha');
+    } finally { setIsLoading(false); }
+  };
+
+  const handleSaveSpreadsheetId = async (id: string) => {
+    if (!accessToken) { handleGoogleLogin(); return; }
+    setIsLoading(true);
     try {
       const loadedData = await fetchSpreadsheetData(id, accessToken);
       setSpreadsheetId(id);
       localStorage.setItem(STORAGE_KEYS.SPREADSHEET_ID, id);
       setAppData(loadedData);
-      showToast('Planilha validada e carregada com sucesso!');
+      showToast('Planilha carregada com sucesso!');
       setActiveTab('home');
     } catch (e: any) {
-      console.error(e);
-      if (e.message?.includes('PERMISSION_DENIED')) {
-        setErrorMessage('403: Sem permissão de acesso nesta planilha.');
-      } else {
-        setErrorMessage(e.message || 'Erro ao conectar à planilha');
-      }
-    } finally {
-      setIsLoading(false);
-    }
+      setErrorMessage(e.message || 'Erro ao conectar à planilha');
+    } finally { setIsLoading(false); }
   };
 
-  // Escalados Presence Confirmation
   const handleConfirmPresence = (escaladoId: string, status: StatusConfirmacao) => {
     setAppData(prev => {
-      const newEscalados = prev.escalados.map(e =>
-        e.id === escaladoId ? { ...e, confirmado: status } : e
-      );
-      const nextData = { ...prev, escalados: newEscalados };
-      syncToSheetIfConnected(nextData);
-      return nextData;
+      const next = { ...prev, escalados: prev.escalados.map(e => e.id === escaladoId ? { ...e, confirmado: status } : e) };
+      syncToSheetIfConnected(next);
+      return next;
     });
-
-    showToast(status === 'sim' ? 'Presença confirmada!' : 'Aviso de indisponibilidade registrado.');
+    showToast(status === 'sim' ? 'Presença confirmada!' : 'Aviso registrado.');
   };
 
-  // Schedule Actions
   const handleSaveEscala = (
     escalaData: Omit<Escala, 'id'>,
     escaladosList: Array<{ membro_id: string; funcao: string }>,
@@ -370,176 +400,138 @@ export default function App() {
     existingId?: string
   ) => {
     const escalaId = existingId || `esc_${Date.now()}`;
-
-    const newEscalaObj: Escala = {
-      ...escalaData,
-      id: escalaId,
-    };
-
-    const newEscaladosObjs: Escalado[] = escaladosList.map((item, idx) => ({
-      id: `escd_${escalaId}_${idx}`,
-      escala_id: escalaId,
-      membro_id: item.membro_id,
-      funcao: item.funcao,
-      confirmado: 'pendente',
+    const newEscala: Escala = { ...escalaData, id: escalaId };
+    const newEscalados: Escalado[] = escaladosList.map((item, idx) => ({
+      id: `escd_${escalaId}_${idx}`, escala_id: escalaId,
+      membro_id: item.membro_id, funcao: item.funcao, confirmado: 'pendente',
     }));
-
-    const newSetlistObjs: MusicaEscala[] = setlistList.map((item, idx) => ({
-      id: `re_${escalaId}_${idx}`,
-      escala_id: escalaId,
-      musica_id: item.musica_id,
-      ordem: item.ordem,
-      tom_definido: item.tom_definido,
+    const newSetlist: MusicaEscala[] = setlistList.map((item, idx) => ({
+      id: `re_${escalaId}_${idx}`, escala_id: escalaId,
+      musica_id: item.musica_id, ordem: item.ordem, tom_definido: item.tom_definido,
     }));
-
     setAppData(prev => {
-      const filteredEscalas = prev.escalas.filter(e => e.id !== escalaId);
-      const filteredEscalados = prev.escalados.filter(e => e.escala_id !== escalaId);
-      const filteredSetlist = prev.repertorioEscala.filter(re => re.escala_id !== escalaId);
-
-      const nextData = {
+      const next = {
         ...prev,
-        escalas: [newEscalaObj, ...filteredEscalas],
-        escalados: [...newEscaladosObjs, ...filteredEscalados],
-        repertorioEscala: [...newSetlistObjs, ...filteredSetlist],
+        escalas: [newEscala, ...prev.escalas.filter(e => e.id !== escalaId)],
+        escalados: [...newEscalados, ...prev.escalados.filter(e => e.escala_id !== escalaId)],
+        repertorioEscala: [...newSetlist, ...prev.repertorioEscala.filter(re => re.escala_id !== escalaId)],
       };
-
-      syncToSheetIfConnected(nextData);
-      return nextData;
+      syncToSheetIfConnected(next);
+      return next;
     });
-
-    showToast(escalaData.status === 'publicada' ? 'Escala publicada com sucesso!' : 'Rascunho de escala salvo!');
+    showToast(escalaData.status === 'publicada' ? 'Escala publicada!' : 'Rascunho salvo!');
     setSelectedEscalaId(escalaId);
     setActiveTab('escala_detalhe');
   };
 
   const handlePublishEscala = (id: string) => {
     setAppData(prev => {
-      const nextEscalas = prev.escalas.map(e => (e.id === id ? { ...e, status: 'publicada' as const } : e));
-      const nextData = { ...prev, escalas: nextEscalas };
-      syncToSheetIfConnected(nextData);
-      return nextData;
+      const next = { ...prev, escalas: prev.escalas.map(e => e.id === id ? { ...e, status: 'publicada' as const } : e) };
+      syncToSheetIfConnected(next);
+      return next;
     });
-    showToast('Escala publicada para a equipe!');
+    showToast('Escala publicada!');
   };
 
   const handleDeleteEscala = (id: string) => {
     setAppData(prev => {
-      const nextData = {
-        ...prev,
-        escalas: prev.escalas.filter(e => e.id !== id),
-        escalados: prev.escalados.filter(e => e.escala_id !== id),
-        repertorioEscala: prev.repertorioEscala.filter(re => re.escala_id !== id),
-      };
-      syncToSheetIfConnected(nextData);
-      return nextData;
+      const next = { ...prev, escalas: prev.escalas.filter(e => e.id !== id), escalados: prev.escalados.filter(e => e.escala_id !== id), repertorioEscala: prev.repertorioEscala.filter(re => re.escala_id !== id) };
+      syncToSheetIfConnected(next);
+      return next;
     });
     showToast('Escala excluída.');
     setActiveTab('escalas');
   };
 
-  // Repertoire Actions
   const handleAddMusica = (musica: Omit<Musica, 'id'>) => {
     const newSong: Musica = { ...musica, id: `mus_${Date.now()}` };
-    setAppData(prev => {
-      const nextData = { ...prev, repertorio: [newSong, ...prev.repertorio] };
-      syncToSheetIfConnected(nextData);
-      return nextData;
-    });
-    showToast('Música adicionada ao repertório!');
+    setAppData(prev => { const next = { ...prev, repertorio: [newSong, ...prev.repertorio] }; syncToSheetIfConnected(next); return next; });
+    showToast('Música adicionada!');
   };
-
   const handleEditMusica = (id: string, musica: Omit<Musica, 'id'>) => {
-    setAppData(prev => {
-      const nextData = {
-        ...prev,
-        repertorio: prev.repertorio.map(m => (m.id === id ? { ...musica, id } : m)),
-      };
-      syncToSheetIfConnected(nextData);
-      return nextData;
-    });
-    showToast('Dados da música atualizados!');
+    setAppData(prev => { const next = { ...prev, repertorio: prev.repertorio.map(m => m.id === id ? { ...musica, id } : m) }; syncToSheetIfConnected(next); return next; });
+    showToast('Música atualizada!');
   };
-
   const handleDeleteMusica = (id: string) => {
-    setAppData(prev => {
-      const nextData = {
-        ...prev,
-        repertorio: prev.repertorio.filter(m => m.id !== id),
-      };
-      syncToSheetIfConnected(nextData);
-      return nextData;
-    });
+    setAppData(prev => { const next = { ...prev, repertorio: prev.repertorio.filter(m => m.id !== id) }; syncToSheetIfConnected(next); return next; });
     showToast('Música removida.');
   };
-
-  // Member Actions
   const handleAddMembro = (membro: Omit<Membro, 'id'>) => {
     const newMembro: Membro = { ...membro, id: `m_${Date.now()}` };
-    setAppData(prev => {
-      const nextData = { ...prev, membros: [...prev.membros, newMembro] };
-      syncToSheetIfConnected(nextData);
-      return nextData;
-    });
-    showToast('Membro cadastrado com sucesso!');
+    setAppData(prev => { const next = { ...prev, membros: [...prev.membros, newMembro] }; syncToSheetIfConnected(next); return next; });
+    showToast('Membro cadastrado!');
   };
-
   const handleEditMembro = (id: string, membro: Omit<Membro, 'id'>) => {
-    setAppData(prev => {
-      const nextData = {
-        ...prev,
-        membros: prev.membros.map(m => (m.id === id ? { ...membro, id } : m)),
-      };
-      syncToSheetIfConnected(nextData);
-      return nextData;
-    });
-    showToast('Cadastro do voluntário atualizado!');
+    setAppData(prev => { const next = { ...prev, membros: prev.membros.map(m => m.id === id ? { ...membro, id } : m) }; syncToSheetIfConnected(next); return next; });
+    showToast('Membro atualizado!');
   };
-
   const handleDeleteMembro = (id: string) => {
-    setAppData(prev => {
-      const nextData = {
-        ...prev,
-        membros: prev.membros.filter(m => m.id !== id),
-      };
-      syncToSheetIfConnected(nextData);
-      return nextData;
-    });
+    setAppData(prev => { const next = { ...prev, membros: prev.membros.filter(m => m.id !== id) }; syncToSheetIfConnected(next); return next; });
     showToast('Membro removido.');
   };
-
-  // Unavailability Actions
   const handleAddDisponibilidade = (membroId: string, dataIndisponivel: string, motivo: string) => {
-    const newInd: Indisponibilidade = {
-      id: `ind_${Date.now()}`,
-      membro_id: membroId,
-      data_indisponivel: dataIndisponivel,
-      motivo,
-    };
-
-    setAppData(prev => {
-      const nextData = { ...prev, disponibilidades: [newInd, ...prev.disponibilidades] };
-      syncToSheetIfConnected(nextData);
-      return nextData;
-    });
-    showToast('Aviso de ausência cadastrado!');
+    const newInd: Indisponibilidade = { id: `ind_${Date.now()}`, membro_id: membroId, data_indisponivel: dataIndisponivel, motivo };
+    setAppData(prev => { const next = { ...prev, disponibilidades: [newInd, ...prev.disponibilidades] }; syncToSheetIfConnected(next); return next; });
+    showToast('Aviso cadastrado!');
   };
-
   const handleDeleteDisponibilidade = (id: string) => {
-    setAppData(prev => {
-      const nextData = {
-        ...prev,
-        disponibilidades: prev.disponibilidades.filter(d => d.id !== id),
-      };
-      syncToSheetIfConnected(nextData);
-      return nextData;
-    });
-    showToast('Aviso de ausência removido.');
+    setAppData(prev => { const next = { ...prev, disponibilidades: prev.disponibilidades.filter(d => d.id !== id) }; syncToSheetIfConnected(next); return next; });
+    showToast('Aviso removido.');
   };
+
+  // ── Render por stage ──────────────────────────────────────────────────────
+  if (session.stage === 'loading') {
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center animate-pulse">
+            <span className="text-slate-950 font-black text-lg">E</span>
+          </div>
+          <p className="text-slate-400 text-sm">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (session.stage === 'login') {
+    return <LoginView isLoading={isLoading} onGoogleLogin={handleGoogleLogin} />;
+  }
+
+  if (session.stage === 'onboarding' && user && accessToken) {
+    return (
+      <OnboardingView
+        user={user}
+        isLoading={isLoading}
+        errorMessage={errorMessage}
+        onCriarMinisterio={handleCriarMinisterio}
+        onEntrarMinisterio={handleEntrarMinisterio}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (session.stage === 'aguardando_aprovacao' && user) {
+    return (
+      <AguardandoView
+        user={user}
+        ministerio={session.ministerio}
+        onLogout={handleLogout}
+        onVerificar={handleVerificarAprovacao}
+        isVerificando={isVerificando}
+      />
+    );
+  }
+
+  if (session.stage === 'super_admin' && user && accessToken) {
+    return <SuperAdminView user={user} accessToken={accessToken} onLogout={handleLogout} />;
+  }
+
+  // ── App principal ─────────────────────────────────────────────────────────
+  const isLeader = session.stage === 'app' && (session.role === 'lider' || session.role === 'super_admin');
+  const currentMinisterio = session.stage === 'app' ? session.ministerio : null;
 
   return (
     <div className="min-h-screen bg-[#F8F7F3] text-slate-900 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
-      {/* Toast Banner */}
       {toastMessage && (
         <div className="fixed top-4 right-4 z-50 bg-amber-500 text-slate-950 px-4 py-3 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 border border-amber-400">
           <Check className="w-4 h-4 stroke-[3]" />
@@ -547,143 +539,70 @@ export default function App() {
         </div>
       )}
 
-      {/* Navigation Bar */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         user={user}
         isLeader={isLeader}
-        setIsLeader={setIsLeader}
+        ministerio={currentMinisterio}
         spreadsheetId={spreadsheetId}
         isInstallable={isInstallable}
         onInstallPwa={handleInstallPwa}
         onOpenSetup={() => setActiveTab('setup')}
       />
 
-      {/* Main View Container */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
         {activeTab === 'home' && (
-          <HomeDashboard
-            appData={appData}
-            user={user}
-            isLeader={isLeader}
-            setActiveTab={setActiveTab}
-            onSelectEscala={id => {
-              setSelectedEscalaId(id);
-              setActiveTab('escala_detalhe');
-            }}
+          <HomeDashboard appData={appData} user={user} isLeader={isLeader} setActiveTab={setActiveTab}
+            onSelectEscala={id => { setSelectedEscalaId(id); setActiveTab('escala_detalhe'); }}
             onConfirmPresence={handleConfirmPresence}
-            onCreateEscala={() => {
-              setEditingEscalaId(null);
-              setActiveTab('escala_form');
-            }}
-          />
+            onCreateEscala={() => { setEditingEscalaId(null); setActiveTab('escala_form'); }} />
         )}
-
         {activeTab === 'escalas' && (
-          <EscalasList
-            appData={appData}
-            isLeader={isLeader}
-            onSelectEscala={id => {
-              setSelectedEscalaId(id);
-              setActiveTab('escala_detalhe');
-            }}
-            onCreateEscala={() => {
-              setEditingEscalaId(null);
-              setActiveTab('escala_form');
-            }}
-          />
+          <EscalasList appData={appData} isLeader={isLeader}
+            onSelectEscala={id => { setSelectedEscalaId(id); setActiveTab('escala_detalhe'); }}
+            onCreateEscala={() => { setEditingEscalaId(null); setActiveTab('escala_form'); }} />
         )}
-
         {activeTab === 'escala_detalhe' && selectedEscalaId && (
-          <EscalaDetail
-            escalaId={selectedEscalaId}
-            appData={appData}
-            isLeader={isLeader}
-            user={user}
+          <EscalaDetail escalaId={selectedEscalaId} appData={appData} isLeader={isLeader} user={user}
             onBack={() => setActiveTab('escalas')}
-            onEditEscala={id => {
-              setEditingEscalaId(id);
-              setActiveTab('escala_form');
-            }}
-            onPublishEscala={handlePublishEscala}
-            onDeleteEscala={handleDeleteEscala}
-            onConfirmPresence={handleConfirmPresence}
-          />
+            onEditEscala={id => { setEditingEscalaId(id); setActiveTab('escala_form'); }}
+            onPublishEscala={handlePublishEscala} onDeleteEscala={handleDeleteEscala}
+            onConfirmPresence={handleConfirmPresence} />
         )}
-
         {activeTab === 'escala_form' && (
-          <EscalaForm
-            escalaIdToEdit={editingEscalaId}
-            appData={appData}
+          <EscalaForm escalaIdToEdit={editingEscalaId} appData={appData}
             onBack={() => setActiveTab(selectedEscalaId ? 'escala_detalhe' : 'escalas')}
-            onSaveEscala={handleSaveEscala}
-          />
+            onSaveEscala={handleSaveEscala} />
         )}
-
         {activeTab === 'repertorio' && (
-          <RepertorioView
-            appData={appData}
-            isLeader={isLeader}
-            onAddMusica={handleAddMusica}
-            onEditMusica={handleEditMusica}
-            onDeleteMusica={handleDeleteMusica}
-          />
+          <RepertorioView appData={appData} isLeader={isLeader}
+            onAddMusica={handleAddMusica} onEditMusica={handleEditMusica} onDeleteMusica={handleDeleteMusica} />
         )}
-
         {activeTab === 'membros' && (
-          <MembrosView
-            appData={appData}
-            isLeader={isLeader}
-            currentUserEmail={user?.email}
-            onAddMembro={handleAddMembro}
-            onEditMembro={handleEditMembro}
-            onDeleteMembro={handleDeleteMembro}
-          />
+          <MembrosView appData={appData} isLeader={isLeader} currentUserEmail={user?.email}
+            onAddMembro={handleAddMembro} onEditMembro={handleEditMembro} onDeleteMembro={handleDeleteMembro} />
         )}
-
         {activeTab === 'disponibilidade' && (
-          <DisponibilidadeView
-            appData={appData}
-            user={user}
-            isLeader={isLeader}
-            onAddDisponibilidade={handleAddDisponibilidade}
-            onDeleteDisponibilidade={handleDeleteDisponibilidade}
-          />
+          <DisponibilidadeView appData={appData} user={user} isLeader={isLeader}
+            onAddDisponibilidade={handleAddDisponibilidade} onDeleteDisponibilidade={handleDeleteDisponibilidade} />
         )}
-
         {activeTab === 'setup' && (
-          <SetupView
-            user={user}
-            spreadsheetId={spreadsheetId}
-            accessToken={accessToken}
-            onSaveSpreadsheetId={handleSaveSpreadsheetId}
-            onCreateNewSpreadsheet={handleCreateNewSpreadsheet}
-            onGoogleLogin={handleGoogleLogin}
-            onUseLocalMode={handleUseLocalMode}
-            isLoading={isLoading}
-            errorMessage={errorMessage}
-          />
+          <SetupView user={user} spreadsheetId={spreadsheetId} accessToken={accessToken}
+            onSaveSpreadsheetId={handleSaveSpreadsheetId} onCreateNewSpreadsheet={handleCreateNewSpreadsheet}
+            onGoogleLogin={handleGoogleLogin} onUseLocalMode={handleUseLocalMode}
+            isLoading={isLoading} errorMessage={errorMessage} />
         )}
-
         {activeTab === 'perfil' && (
-          <PerfilView
-            user={user}
-            isLeader={isLeader}
-            setIsLeader={setIsLeader}
-            spreadsheetId={spreadsheetId}
-            isInstallable={isInstallable}
-            onInstallPwa={handleInstallPwa}
-            onOpenSetup={() => setActiveTab('setup')}
-            onGoogleLogin={handleGoogleLogin}
-            onLogout={handleLogout}
-          />
+          <PerfilView user={user} isLeader={isLeader} ministerio={currentMinisterio}
+            spreadsheetId={spreadsheetId} isInstallable={isInstallable}
+            onInstallPwa={handleInstallPwa} onOpenSetup={() => setActiveTab('setup')}
+            onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} />
         )}
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-slate-200/80 bg-[#F8F7F3] py-6 text-center text-xs text-slate-500 mb-16 md:mb-0">
-        <p>EscalaLouvor • Sistema de Gestão de Escalas e Ministérios com Google Sheets</p>
+        <p>EscalaLouvor • Sistema de Gestão de Escalas e Ministérios</p>
       </footer>
     </div>
   );

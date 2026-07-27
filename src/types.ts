@@ -94,3 +94,37 @@ export type ActiveTab =
   | 'disponibilidade' 
   | 'perfil' 
   | 'setup';
+
+// ─── Sistema de Ministérios ───────────────────────────────────────────────────
+
+export type UserRole = 'super_admin' | 'lider' | 'membro';
+
+export interface PermissaoMembro {
+  email: string;
+  nome: string;
+  role: UserRole;
+  spreadsheet_id: string; // ID da planilha do ministério
+  ministerio_nome: string;
+  ministerio_codigo: string;
+  aprovado: boolean; // false = aguardando aprovação do líder
+}
+
+export interface MinisterioInfo {
+  spreadsheet_id: string;
+  nome: string;
+  codigo: string; // ex: IGRSIA
+  lider_email: string;
+  lider_nome: string;
+  membros: PermissaoMembro[];
+}
+
+// Estado da sessão do app
+export type AppSession =
+  | { stage: 'loading' }
+  | { stage: 'login' }
+  | { stage: 'onboarding' }
+  | { stage: 'aguardando_aprovacao'; ministerio: MinisterioInfo }
+  | { stage: 'app'; role: UserRole; ministerio: MinisterioInfo }
+  | { stage: 'super_admin' };
+
+export const SUPER_ADMIN_EMAIL = 'pablocostaguimaraes@gmail.com';
