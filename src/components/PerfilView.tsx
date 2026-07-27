@@ -1,25 +1,58 @@
-import React, { useState } from 'react';
-import { User, FileSpreadsheet, Shield, Download, ExternalLink, LogOut, CheckCircle2, Copy, Check } from 'lucide-react';
-import { GoogleUserProfile, MinisterioInfo } from '../types';
+import React, { useState, useEffect } from 'react';
+import { User, FileSpreadsheet, Shield, Download, ExternalLink, LogOut, CheckCircle2, Copy, Check, Save, Phone, Music } from 'lucide-react';
+import { GoogleUserProfile, MinisterioInfo, AppDataState, FuncaoMembro } from '../types';
 import { gerarTokenConvite } from '../services/permissoes';
+
+const FUNCOES_DISPONIVEIS: FuncaoMembro[] = [
+  'Vocal', 'Ministro', 'Guitarra', 'Violão', 'Baixo',
+  'Bateria', 'Teclado', 'Som', 'Projeção', 'Transmissão', 'Recepção', 'Outro',
+];
 
 interface PerfilViewProps {
   user: GoogleUserProfile | null;
   isLeader: boolean;
   ministerio: MinisterioInfo | null;
+  appData: AppDataState;
   spreadsheetId: string | null;
   isInstallable: boolean;
   onInstallPwa: () => void;
   onOpenSetup: () => void;
   onGoogleLogin: () => void;
   onLogout: () => void;
+  onSavePerfil: (telefone: string, funcoes: string[]) => void;
 }
 
 export const PerfilView: React.FC<PerfilViewProps> = ({
-  user, isLeader, ministerio, spreadsheetId,
-  isInstallable, onInstallPwa, onOpenSetup, onGoogleLogin, onLogout,
+  user, isLeader, ministerio, appData, spreadsheetId,
+  isInstallable, onInstallPwa, onOpenSetup, onGoogleLogin, onLogout, onSavePerfil,
 }) => {
   const [copiado, setCopiado] = useState(false);
+
+  // Dados editáveis do perfil
+  const membroAtual = appData.membros.find(m => m.email.toLowerCase() === user?.email?.toLowerCase());
+  const [telefone, setTelefone] = useState(membroAtual?.telefone || '');
+  const [funcoesSelecionadas, setFuncoesSelecionadas] = useState<string[]>(membroAtual?.funcoes || []);
+  const [salvo, setSalvo] = useState(false);
+
+  // Atualiza campos quando o membro carregar
+  useEffect(() => {
+    if (membroAtual) {
+      setTelefone(membroAtual.telefone || '');
+      setFuncoesSelecionadas(membroAtual.funcoes || []);
+    }
+  }, [membroAtual?.id]);
+
+  const toggleFuncao = (funcao: string) => {
+    setFuncoesSelecionadas(prev =>
+      prev.includes(funcao) ? prev.filter(f => f !== funcao) : [...prev, funcao]
+    );
+  };
+
+  const handleSalvar = () => {
+    onSavePerfil(telefone, funcoesSelecionadas);
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2000);
+  };
 
   const handleCopiarConvite = () => {
     if (!ministerio) return;
@@ -44,18 +77,72 @@ export const PerfilView: React.FC<PerfilViewProps> = ({
           <div className="space-y-1">
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">{user?.name || 'Usuário'}</h1>
             <p className="text-xs text-slate-500 font-medium">{user?.email}</p>
-            <div className="flex items-center justify-center sm:justify-start gap-2 pt-1">
-              <span className={`px-3 py-1 rounded-full font-extrabold text-xs border ${
-                isLeader
-                  ? 'bg-amber-50 text-amber-800 border-amber-200'
-                  : 'bg-slate-100 text-slate-600 border-slate-200'
-              }`}>
-                <Shield className="w-3 h-3 inline mr-1" />
-                {isLeader ? 'Líder' : 'Membro'}
-              </span>
-            </div>
+            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full font-extrabold text-xs border ${
+              isLeader ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'
+            }`}>
+              <Shield className="w-3 h-3" />
+              {isLeader ? 'Líder' : 'Membro'}
+            </span>
           </div>
         </div>
+      </div>
+
+      {/* Editar perfil — funções e telefone */}
+      <div className="rounded-3xl bg-white p-6 border border-slate-200/80 shadow-sm space-y-5">
+        <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+          <Music className="w-5 h-5 text-amber-500" />
+          Meus Talentos e Contato
+        </h2>
+
+        {/* Funções */}
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-2">
+            Minhas funções na equipe
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {FUNCOES_DISPONIVEIS.map(funcao => (
+              <button
+                key={funcao}
+                type="button"
+                onClick={() => toggleFuncao(funcao)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                  funcoesSelecionadas.includes(funcao)
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                {funcao}
+              </button>
+            ))}
+          </div>
+          {funcoesSelecionadas.length === 0 && (
+            <p className="text-xs text-slate-400 mt-2">Selecione pelo menos uma função.</p>
+          )}
+        </div>
+
+        {/* Telefone */}
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <Phone className="w-3.5 h-3.5 inline mr-1" />
+            Telefone / WhatsApp
+          </label>
+          <input
+            type="tel"
+            value={telefone}
+            onChange={e => setTelefone(e.target.value)}
+            placeholder="(11) 99999-9999"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-amber-500 transition-colors"
+          />
+        </div>
+
+        <button
+          onClick={handleSalvar}
+          disabled={funcoesSelecionadas.length === 0}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm shadow-sm transition-all disabled:opacity-50"
+        >
+          {salvo ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+          {salvo ? 'Salvo!' : 'Salvar perfil'}
+        </button>
       </div>
 
       {/* Ministério */}
@@ -67,25 +154,26 @@ export const PerfilView: React.FC<PerfilViewProps> = ({
               <p className="text-xs text-slate-500 font-medium">Nome</p>
               <p className="text-base font-extrabold text-slate-900">{ministerio.nome}</p>
             </div>
-            <div>
-              <p className="text-xs text-slate-500 font-medium">Código</p>
-              <p className="font-mono font-extrabold text-amber-600 tracking-widest text-lg">{ministerio.codigo}</p>
-            </div>
             {ministerio.lider_nome && (
               <div>
                 <p className="text-xs text-slate-500 font-medium">Líder</p>
                 <p className="text-sm font-bold text-slate-800">{ministerio.lider_nome}</p>
               </div>
             )}
-            {/* Copiar convite (só líder) */}
             {isLeader && (
-              <button
-                onClick={handleCopiarConvite}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 font-extrabold text-xs transition-colors"
-              >
-                {copiado ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiado ? 'Copiado!' : 'Copiar código de convite'}
-              </button>
+              <>
+                <div>
+                  <p className="text-xs text-slate-500 font-medium">Código do ministério</p>
+                  <p className="font-mono font-extrabold text-amber-600 tracking-widest text-lg">{ministerio.codigo}</p>
+                </div>
+                <button
+                  onClick={handleCopiarConvite}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 font-extrabold text-xs transition-colors"
+                >
+                  {copiado ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiado ? 'Copiado!' : 'Copiar código de convite'}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -108,7 +196,6 @@ export const PerfilView: React.FC<PerfilViewProps> = ({
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               Conexão ativa com Google Sheets
             </div>
-            <p className="font-mono text-slate-500 break-all text-[11px]">ID: {spreadsheetId}</p>
             <a href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}`} target="_blank" rel="noreferrer"
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-extrabold transition-colors">
               <span>Abrir no Google Drive</span>

@@ -158,6 +158,26 @@ export default function App() {
         return;
       }
 
+      // Carrega dados da planilha e garante que o usuário está na lista de membros
+      try {
+        const dados = await fetchSpreadsheetData(sheetId, token);
+        const jaEstaNaLista = dados.membros.some(m => m.email.toLowerCase() === u.email.toLowerCase());
+        if (!jaEstaNaLista) {
+          const novoMembro: Membro = {
+            id: `m_${Date.now()}`,
+            nome: u.name,
+            email: u.email,
+            telefone: '',
+            funcoes: permissao.role === 'lider' ? ['Líder'] : ['Vocal'],
+            ministerio: info.nome,
+            ativo: true,
+          };
+          dados.membros.push(novoMembro);
+          await writeFullAppDataToSheet(sheetId, token, dados);
+        }
+        setAppData(dados);
+      } catch {}
+
       setSession({ stage: 'app', role: permissao.role, ministerio: info });
     } catch (e) {
       setSession({ stage: 'onboarding' });
@@ -279,6 +299,20 @@ export default function App() {
       };
       await registrarUsuario(id, accessToken, permissao, user.picture || '');
 
+      // Adiciona o líder como membro na lista de membros da equipe
+      const liderMembro: Membro = {
+        id: `m_lider_${Date.now()}`,
+        nome: user.name,
+        email: user.email,
+        telefone: '',
+        funcoes: ['Líder'],
+        ministerio: nome,
+        ativo: true,
+      };
+      const appDataComLider = { ...INITIAL_APP_DATA, membros: [liderMembro] };
+      setAppData(appDataComLider);
+      await writeFullAppDataToSheet(id, accessToken, appDataComLider);
+
       const info: MinisterioInfo = {
         spreadsheet_id: id, nome, codigo,
         lider_email: user.email, lider_nome: user.name,
@@ -325,6 +359,23 @@ export default function App() {
 
       const permissaoAtual = await buscarPermissaoUsuario(sheetId, accessToken, user.email);
       if (permissaoAtual?.aprovado) {
+        // Carrega dados e garante que o membro está na lista
+        const dados = await fetchSpreadsheetData(sheetId, accessToken);
+        const jaEstaNaLista = dados.membros.some(m => m.email.toLowerCase() === user.email.toLowerCase());
+        if (!jaEstaNaLista) {
+          const novoMembro: Membro = {
+            id: `m_${Date.now()}`,
+            nome: user.name,
+            email: user.email,
+            telefone: '',
+            funcoes: ['Vocal'],
+            ministerio: info.nome,
+            ativo: true,
+          };
+          dados.membros.push(novoMembro);
+          await writeFullAppDataToSheet(sheetId, accessToken, dados);
+        }
+        setAppData(dados);
         setSession({ stage: 'app', role: permissaoAtual.role, ministerio: info });
       } else {
         setSession({ stage: 'aguardando_aprovacao', ministerio: info });
@@ -343,6 +394,9 @@ export default function App() {
     try {
       const permissao = await buscarPermissaoUsuario(spreadsheetId, accessToken, user.email);
       if (permissao?.aprovado && ministerio) {
+        // Carrega dados da planilha para ter os membros atualizados
+        const dados = await fetchSpreadsheetData(spreadsheetId, accessToken);
+        setAppData(dados);
         setSession({ stage: 'app', role: permissao.role, ministerio });
         showToast('Acesso aprovado! Bem-vindo ao ministério.');
       } else {
@@ -483,6 +537,33 @@ export default function App() {
     showToast('Aviso removido.');
   };
 
+  // ── Salvar perfil do usuário ──────────────────────────────────────────────
+  const handleSavePerfil = (telefone: string, funcoes: string[]) => {
+    if (!user) return;
+    setAppData(prev => {
+      const idx = prev.membros.findIndex(m => m.email.toLowerCase() === user.email.toLowerCase());
+      let novos: typeof prev.membros;
+      if (idx !== -1) {
+        novos = prev.membros.map((m, i) => i === idx ? { ...m, telefone, funcoes } : m);
+      } else {
+        const novoMembro: Membro = {
+          id: `m_${Date.now()}`,
+          nome: user.name,
+          email: user.email,
+          telefone,
+          funcoes,
+          ministerio: ministerio?.nome || '',
+          ativo: true,
+        };
+        novos = [...prev.membros, novoMembro];
+      }
+      const next = { ...prev, membros: novos };
+      syncToSheetIfConnected(next);
+      return next;
+    });
+    showToast('Perfil atualizado!');
+  };
+
   // ── Render por stage ──────────────────────────────────────────────────────
   if (session.stage === 'loading') {
     return (
@@ -599,9 +680,11 @@ export default function App() {
         )}
         {activeTab === 'perfil' && (
           <PerfilView user={user} isLeader={isLeader} ministerio={currentMinisterio}
+            appData={appData}
             spreadsheetId={spreadsheetId} isInstallable={isInstallable}
             onInstallPwa={handleInstallPwa} onOpenSetup={() => setActiveTab('setup')}
-            onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} />
+            onGoogleLogin={handleGoogleLogin} onLogout={handleLogout}
+            onSavePerfil={handleSavePerfil} />
         )}
       </main>
 
