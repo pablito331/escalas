@@ -136,7 +136,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
               </div>
               <div className="text-left">
                 <p className="text-sm font-extrabold">Entrar num ministério</p>
-                <p className="text-xs font-medium text-slate-400 mt-0.5">Tenho o código que meu líder compartilhou</p>
+                <p className="text-xs font-medium text-slate-400 mt-0.5">Tenho o código — novo dispositivo ou novo membro</p>
               </div>
             </button>
           </div>
@@ -231,7 +231,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
               </button>
               <div>
                 <h2 className="text-lg font-extrabold text-white">Entrar no Ministério</h2>
-                <p className="text-xs text-slate-400">Use o código que seu líder enviou</p>
+                <p className="text-xs text-slate-400">Novo membro ou acessando de outro dispositivo</p>
               </div>
             </div>
 
@@ -249,7 +249,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                   required
                 />
                 <p className="text-xs text-slate-500 mt-1.5">
-                  Peça ao líder do ministério para compartilhar o código de convite.
+                  Peça ao líder o código de convite. Se já é membro e está num dispositivo novo, use o mesmo código de sempre.
                 </p>
               </div>
 
