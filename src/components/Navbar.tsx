@@ -28,7 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Sparkles className="w-5 h-5 fill-slate-950" />
             </div>
             <div>
-              <span className="font-extrabold text-lg tracking-tight text-white">EscalaLouvor</span>
+              <span className="font-extrabold text-lg tracking-tight text-white">Escalas de Louvor</span>
               {ministerio && (
                 <span className="block text-[10px] font-semibold text-amber-400 tracking-wider uppercase leading-none mt-0.5 truncate max-w-[160px]">
                   {ministerio.nome}

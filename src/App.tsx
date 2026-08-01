@@ -41,6 +41,8 @@ const STORAGE_KEYS = {
   ACCESS_TOKEN: 'escalalouvor_access_token',
   USER_PROFILE: 'escalalouvor_user_profile',
   MINISTERIO: 'escalalouvor_ministerio',
+  SESSION_ROLE: 'escalalouvor_session_role',
+  APP_DATA: 'escalalouvor_app_data_v2',
 };
 
 declare global {
@@ -53,7 +55,12 @@ export default function App() {
   const [selectedEscalaId, setSelectedEscalaId] = useState<string | null>(null);
   const [editingEscalaId, setEditingEscalaId] = useState<string | null>(null);
 
-  const [appData, setAppData] = useState<AppDataState>(INITIAL_APP_DATA);
+  const [appData, setAppData] = useState<AppDataState>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.APP_DATA);
+      return saved ? JSON.parse(saved) : INITIAL_APP_DATA;
+    } catch { return INITIAL_APP_DATA; }
+  });
 
   const [user, setUser] = useState<GoogleUserProfile | null>(() => {
     try {
@@ -88,11 +95,23 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Persiste apenas o ministério e token no localStorage
+  // Persiste sessão, ministério e dados no localStorage
   useEffect(() => {
     if (ministerio) localStorage.setItem(STORAGE_KEYS.MINISTERIO, JSON.stringify(ministerio));
     else localStorage.removeItem(STORAGE_KEYS.MINISTERIO);
   }, [ministerio]);
+
+  useEffect(() => {
+    if (session.stage === 'app') {
+      localStorage.setItem(STORAGE_KEYS.SESSION_ROLE, session.role);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    if (appData !== INITIAL_APP_DATA) {
+      localStorage.setItem(STORAGE_KEYS.APP_DATA, JSON.stringify(appData));
+    }
+  }, [appData]);
 
   // PWA
   useEffect(() => {
@@ -180,18 +199,29 @@ export default function App() {
     }
   }, []);
 
-  // Ao montar: se já tem token e user, resolve sessão
+  // Ao montar: restaura sessão do cache ou resolve via planilha
   useEffect(() => {
-    if (user && accessToken && accessToken !== 'local-demo') {
+    const savedRole = localStorage.getItem(STORAGE_KEYS.SESSION_ROLE);
+
+    if (user && ministerio && savedRole) {
+      // Sessão em cache — entra direto sem ir na planilha
+      if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+        setSession({ stage: 'super_admin' });
+      } else {
+        setSession({ stage: 'app', role: savedRole as any, ministerio });
+      }
+      // Tenta atualizar da planilha em background se online
+      if (accessToken && accessToken !== 'local-demo' && spreadsheetId && navigator.onLine) {
+        fetchSpreadsheetData(spreadsheetId, accessToken)
+          .then(dados => setAppData(dados))
+          .catch(() => {}); // falha silenciosa, usa cache
+      }
+    } else if (user && accessToken && accessToken !== 'local-demo') {
       resolverSessao(user, accessToken, spreadsheetId);
     } else if (user && accessToken === 'local-demo') {
       setSession({ stage: 'app', role: 'lider', ministerio: ministerio || {
-        spreadsheet_id: 'local',
-        nome: 'Modo Local',
-        codigo: 'LOCAL',
-        lider_email: user.email,
-        lider_nome: user.name,
-        membros: [],
+        spreadsheet_id: 'local', nome: 'Modo Local', codigo: 'LOCAL',
+        lider_email: user.email, lider_nome: user.name, membros: [],
       }});
     } else {
       setSession({ stage: 'login' });
@@ -256,6 +286,8 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
     localStorage.removeItem(STORAGE_KEYS.SPREADSHEET_ID);
     localStorage.removeItem(STORAGE_KEYS.MINISTERIO);
+    localStorage.removeItem(STORAGE_KEYS.SESSION_ROLE);
+    localStorage.removeItem(STORAGE_KEYS.APP_DATA);
     localStorage.removeItem('escalalouvor_app_data_v1'); // limpa cache antigo
     firebaseLogout().catch(() => {});
     setSession({ stage: 'login' });
@@ -693,7 +725,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-200/80 bg-[#F8F7F3] py-6 text-center text-xs text-slate-500 mb-16 md:mb-0">
-        <p>EscalaLouvor • Sistema de Gestão de Escalas e Ministérios</p>
+        <p>Escalas de Louvor • Sistema de Gestão de Escalas e Ministérios</p>
       </footer>
     </div>
   );

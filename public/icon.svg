@@ -1,4 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="100" fill="#f59e0b"/>
-  <text x="256" y="340" font-size="280" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" fill="#0f172a">E</text>
+  <!-- Fundo com cantos arredondados -->
+  <rect width="512" height="512" rx="110" fill="#0f172a"/>
+  <!-- Brilho sutil no topo -->
+  <rect width="512" height="256" rx="110" fill="#1e293b" opacity="0.5"/>
+  <!-- Nota musical centralizada -->
+  <!-- Haste da nota -->
+  <rect x="290" y="120" width="32" height="200" rx="16" fill="#f59e0b"/>
+  <!-- Cabeça da nota principal -->
+  <ellipse cx="248" cy="330" rx="52" ry="38" fill="#f59e0b" transform="rotate(-15 248 330)"/>
+  <!-- Bandeira da nota (colcheia) -->
+  <path d="M322 120 Q390 160 370 220 Q350 180 322 200 Z" fill="#f59e0b"/>
+  <!-- Três linhas de pauta sutis -->
+  <rect x="80" y="230" width="80" height="6" rx="3" fill="#f59e0b" opacity="0.3"/>
+  <rect x="80" y="255" width="80" height="6" rx="3" fill="#f59e0b" opacity="0.3"/>
+  <rect x="80" y="280" width="80" height="6" rx="3" fill="#f59e0b" opacity="0.3"/>
+  <!-- Ponto decorativo -->
+  <circle cx="390" cy="350" r="18" fill="#f59e0b" opacity="0.3"/>
+  <circle cx="130" cy="160" r="12" fill="#f59e0b" opacity="0.2"/>
 </svg>

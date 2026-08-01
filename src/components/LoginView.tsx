@@ -22,7 +22,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ isLoading, onGoogleLogin }
             <Sparkles className="w-8 h-8 fill-slate-950 text-slate-950" />
           </div>
           <div>
-            <h1 className="text-3xl font-extrabold text-white tracking-tight">EscalaLouvor</h1>
+            <h1 className="text-3xl font-extrabold text-white tracking-tight">Escalas de Louvor</h1>
             <p className="text-amber-400 text-sm font-semibold tracking-wider uppercase mt-1">
               Gestão de Ministérios
             </p>
@@ -52,7 +52,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ isLoading, onGoogleLogin }
         {/* Login Card */}
         <div className="bg-slate-800/60 backdrop-blur border border-slate-700/60 rounded-3xl p-6 space-y-4 shadow-2xl">
           <div className="text-center">
-            <h2 className="text-lg font-extrabold text-white">Entrar no EscalaLouvor</h2>
+            <h2 className="text-lg font-extrabold text-white">Entrar no Escalas de Louvor</h2>
             <p className="text-slate-400 text-xs mt-1">
               Use sua conta Google para acessar
             </p>
@@ -91,7 +91,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ isLoading, onGoogleLogin }
         </div>
 
         <p className="text-center text-xs text-slate-600">
-          EscalaLouvor • Gestão de Escalas e Ministérios
+          Escalas de Louvor • Gestão de Escalas e Ministérios
         </p>
       </div>
     </div>
