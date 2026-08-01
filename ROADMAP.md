@@ -15,7 +15,7 @@
 - [x] Aprovação de membros pelo líder
 - [x] Papéis: super_admin / lider / membro
 - [x] Sessão persistente — não desloga ao recarregar, só ao clicar Sair
-- [x] Mesmo código de convite funciona para dispositivos novos (sem duplicar membro)
+- [x] Login automático por email via planilha índice central (sem precisar digitar código em dispositivo novo)
 - [x] Líder adicionado automaticamente como membro ao criar ministério
 
 ### Painel Super Admin
@@ -28,7 +28,7 @@
 ### App Principal
 - [x] Dados sem mock — começa sempre vazio
 - [x] Perfil editável com funções (talentos) e telefone
-- [x] Botão de feedback flutuante para todos os usuários
+- [x] Botão de feedback flutuante para todos os usuários — com aba de doação via PIX
 - [x] Badge na navbar indicando membros aguardando aprovação
 - [x] Indicador de sincronização (Salvando / Sincronizado / Erro)
 - [x] Banner de token expirado com botão de reconectar
@@ -72,7 +72,8 @@
 
 ---
 
-## 💡 Ideias Futuras
+### Ideias Futuras
+- [ ] Múltiplos ministérios por usuário — alternar entre eles no app
 - [ ] Integração com WhatsApp para envio automático de escalas
 - [ ] Múltiplos ministérios por usuário (ex: louvor + mídia na mesma igreja)
 - [ ] Calendário visual de escalas
