@@ -20,6 +20,7 @@ import {
   registrarUsuario, buscarPermissaoUsuario, carregarMinisterioInfo,
   gerarTokenConvite, garantirAbaPermissoes,
 } from './services/permissoes';
+import { registrarNoIndice } from './services/indice';
 import { LoginView } from './components/LoginView';
 import { OnboardingView } from './components/OnboardingView';
 import { AguardandoView } from './components/AguardandoView';
@@ -348,6 +349,15 @@ export default function App() {
         membros: [permissao],
       };
       setMinisterio(info);
+
+      // Registra no índice central do super admin (silencioso se falhar)
+      registrarNoIndice(accessToken, {
+        spreadsheet_id: id,
+        ministerio_nome: nome,
+        ministerio_codigo: codigo,
+        lider_email: user.email,
+        lider_nome: user.name,
+      }).catch(() => {});
 
       const token = gerarTokenConvite(id, codigo);
       showToast(`Ministério criado! Código de convite: ${token}`);

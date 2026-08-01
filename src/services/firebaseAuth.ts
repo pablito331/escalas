@@ -1,8 +1,16 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
 
-// Initialize Firebase App
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+};
+
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 
@@ -36,10 +44,6 @@ export const initAuthListener = (
   });
 };
 
-/**
- * Sign in with Google using Firebase Auth popup.
- * Also retrieves the OAuth access token for Google Sheets API.
- */
 export async function googleSignInWithFirebase(): Promise<{
   user: { name: string; email: string; picture?: string };
   accessToken: string;
@@ -62,20 +66,14 @@ export async function googleSignInWithFirebase(): Promise<{
       picture: result.user.photoURL || undefined,
     };
 
-    return {
-      user: userProfile,
-      accessToken: token,
-    };
+    return { user: userProfile, accessToken: token };
   } finally {
     isSigningIn = false;
   }
 }
 
-/**
- * Get OAuth Client ID from firebase config
- */
 export function getOAuthClientId(): string {
-  return firebaseConfig.oAuthClientId || '';
+  return import.meta.env.VITE_FIREBASE_OAUTH_CLIENT_ID || '';
 }
 
 export async function logout(): Promise<void> {

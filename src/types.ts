@@ -127,4 +127,4 @@ export type AppSession =
   | { stage: 'app'; role: UserRole; ministerio: MinisterioInfo }
   | { stage: 'super_admin' };
 
-export const SUPER_ADMIN_EMAIL = 'pablocostaguimaraes@gmail.com';
+export const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL as string || 'pablocostaguimaraes@gmail.com';
