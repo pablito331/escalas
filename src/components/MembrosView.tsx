@@ -166,7 +166,7 @@ export const MembrosView: React.FC<MembrosViewProps> = ({
         {isLeader && (
           <button
             onClick={handleOpenAdd}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm shadow-sm transition-all shrink-0"
+            className="hidden sm:inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm shadow-sm transition-all shrink-0"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>Cadastrar Membro</span>
@@ -174,7 +174,16 @@ export const MembrosView: React.FC<MembrosViewProps> = ({
         )}
       </div>
 
-      {/* Convite para Voluntários Card (para o Líder) */}
+      {/* FAB mobile para adicionar membro */}
+      {isLeader && (
+        <button
+          onClick={handleOpenAdd}
+          className="sm:hidden fixed bottom-20 right-4 z-30 w-14 h-14 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-xl flex items-center justify-center transition-all active:scale-95"
+          title="Cadastrar Membro"
+        >
+          <Plus className="w-6 h-6 stroke-[3]" />
+        </button>
+      )}
       {isLeader && (
         <div className="rounded-3xl bg-slate-900 text-white p-5 sm:p-6 shadow-md border border-slate-800 space-y-4">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

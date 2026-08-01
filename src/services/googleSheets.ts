@@ -220,12 +220,12 @@ export async function writeFullAppDataToSheet(
   const body = {
     valueInputOption: 'USER_ENTERED',
     data: [
-      { range: 'Membros!A1:G100', values: membrosRows },
-      { range: 'Escalas!A1:F100', values: escalasRows },
-      { range: 'Escalados!A1:E100', values: escaladosRows },
-      { range: 'Repertorio!A1:H100', values: repertorioRows },
-      { range: 'Repertorio_Escala!A1:E100', values: repertorioEscalaRows },
-      { range: 'Disponibilidade!A1:D100', values: disponibilidadeRows },
+      { range: 'Membros!A1:G500', values: membrosRows },
+      { range: 'Escalas!A1:F2000', values: escalasRows },
+      { range: 'Escalados!A1:E5000', values: escaladosRows },
+      { range: 'Repertorio!A1:H2000', values: repertorioRows },
+      { range: 'Repertorio_Escala!A1:E5000', values: repertorioEscalaRows },
+      { range: 'Disponibilidade!A1:D2000', values: disponibilidadeRows },
     ],
   };
 
@@ -254,12 +254,12 @@ export async function fetchSpreadsheetData(
   await ensureSpreadsheetStructure(spreadsheetId, accessToken);
 
   const ranges = [
-    'Membros!A1:G100',
-    'Escalas!A1:F100',
-    'Escalados!A1:E100',
-    'Repertorio!A1:H100',
-    'Repertorio_Escala!A1:E100',
-    'Disponibilidade!A1:D100',
+    'Membros!A1:G500',
+    'Escalas!A1:F2000',
+    'Escalados!A1:E5000',
+    'Repertorio!A1:H2000',
+    'Repertorio_Escala!A1:E5000',
+    'Disponibilidade!A1:D2000',
   ].map(r => `ranges=${encodeURIComponent(r)}`).join('&');
 
   const url = `${SHEETS_API_BASE}/${spreadsheetId}/values:batchGet?${ranges}`;

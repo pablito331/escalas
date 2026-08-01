@@ -10,13 +10,14 @@ interface NavbarProps {
   ministerio: MinisterioInfo | null;
   spreadsheetId: string | null;
   isInstallable: boolean;
+  pendentesCount: number;
   onInstallPwa: () => void;
   onOpenSetup: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab, setActiveTab, user, isLeader, ministerio,
-  spreadsheetId, isInstallable, onInstallPwa, onOpenSetup,
+  spreadsheetId, isInstallable, pendentesCount, onInstallPwa, onOpenSetup,
 }) => {
   return (
     <>
@@ -55,14 +56,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* Role badge */}
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border ${
-              isLeader
-                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                : 'bg-slate-800 text-slate-400 border-slate-700'
-            }`}>
-              <Shield className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">{isLeader ? 'Líder' : 'Membro'}</span>
+            {/* Role badge com badge de pendentes */}
+            <div className="relative">
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border ${
+                isLeader
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}>
+                <Shield className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">{isLeader ? 'Líder' : 'Membro'}</span>
+              </div>
+              {isLeader && pendentesCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-extrabold flex items-center justify-center">
+                  {pendentesCount}
+                </span>
+              )}
             </div>
 
             {/* PWA install */}

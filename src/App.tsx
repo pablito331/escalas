@@ -18,7 +18,7 @@ import {
 } from './services/firebaseAuth';
 import {
   registrarUsuario, buscarPermissaoUsuario, carregarMinisterioInfo,
-  gerarTokenConvite, garantirAbaPermissoes,
+  gerarTokenConvite, garantirAbaPermissoes, lerPermissoes,
 } from './services/permissoes';
 import { registrarNoIndice } from './services/indice';
 import { LoginView } from './components/LoginView';
@@ -35,7 +35,8 @@ import { MembrosView } from './components/MembrosView';
 import { DisponibilidadeView } from './components/DisponibilidadeView';
 import { SetupView } from './components/SetupView';
 import { PerfilView } from './components/PerfilView';
-import { Check } from 'lucide-react';
+import { FeedbackButton } from './components/FeedbackButton';
+import { Check, CloudOff, RefreshCw as SyncIcon, Cloud } from 'lucide-react';
 
 const STORAGE_KEYS = {
   SPREADSHEET_ID: 'escalalouvor_spreadsheet_id',
@@ -90,6 +91,9 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [pendentesCount, setPendentesCount] = useState(0);
+  const [tokenExpirado, setTokenExpirado] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -109,16 +113,31 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    if (appData !== INITIAL_APP_DATA) {
+    // #6 Guard correto: só salva se tiver dados reais
+    const temDados = appData.membros.length > 0 || appData.escalas.length > 0 ||
+      appData.repertorio.length > 0 || appData.disponibilidades.length > 0;
+    if (temDados) {
       localStorage.setItem(STORAGE_KEYS.APP_DATA, JSON.stringify(appData));
     }
   }, [appData]);
 
-  // PWA
+  // PWA + online/offline + sync pendente offline
   useEffect(() => {
     const handler = (e: Event) => { e.preventDefault(); setDeferredPrompt(e); setIsInstallable(true); };
     window.addEventListener('beforeinstallprompt', handler);
-    const goOnline = () => setIsOnline(true);
+    const goOnline = () => {
+      setIsOnline(true);
+      // #9 Sync ao voltar online
+      const savedData = localStorage.getItem(STORAGE_KEYS.APP_DATA);
+      const sid = localStorage.getItem(STORAGE_KEYS.SPREADSHEET_ID);
+      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      if (savedData && sid && token && token !== 'local-demo') {
+        try {
+          const data = JSON.parse(savedData);
+          writeFullAppDataToSheet(sid, token, data).catch(() => {});
+        } catch {}
+      }
+    };
     const goOffline = () => setIsOnline(false);
     window.addEventListener('online', goOnline);
     window.addEventListener('offline', goOffline);
@@ -161,7 +180,6 @@ export default function App() {
       const permissao = await buscarPermissaoUsuario(sheetId, token, u.email);
 
       if (!permissao) {
-        // Usuário tem planilha mas não está registrado → onboarding
         setSession({ stage: 'onboarding' });
         return;
       }
@@ -215,7 +233,18 @@ export default function App() {
       if (accessToken && accessToken !== 'local-demo' && spreadsheetId && navigator.onLine) {
         fetchSpreadsheetData(spreadsheetId, accessToken)
           .then(dados => setAppData(dados))
-          .catch(() => {}); // falha silenciosa, usa cache
+          .catch((e) => {
+            // #1 Token expirado — pede novo login
+            if (e.message?.includes('401') || e.message?.includes('PERMISSION_DENIED')) {
+              setTokenExpirado(true);
+            }
+          });
+        // #9 Verificar pendentes para líder
+        if (savedRole === 'lider') {
+          lerPermissoes(spreadsheetId, accessToken)
+            .then(perms => setPendentesCount(perms.filter(p => !p.aprovado).length))
+            .catch(() => {});
+        }
       }
     } else if (user && accessToken && accessToken !== 'local-demo') {
       resolverSessao(user, accessToken, spreadsheetId);
@@ -360,7 +389,9 @@ export default function App() {
       }).catch(() => {});
 
       const token = gerarTokenConvite(id, codigo);
-      showToast(`Ministério criado! Código de convite: ${token}`);
+      // #10 Copia automaticamente e mostra só o código curto
+      try { navigator.clipboard.writeText(token); } catch {}
+      showToast(`Ministério "${nome}" criado! Código copiado: ${codigo}`);
       setSession({ stage: 'app', role: 'lider', ministerio: info });
     } catch (e: any) {
       setErrorMessage(e.message || 'Erro ao criar ministério.');
@@ -447,8 +478,20 @@ export default function App() {
 
   // ── Sync & dados ──────────────────────────────────────────────────────────
   const syncToSheetIfConnected = async (newData: AppDataState) => {
-    if (spreadsheetId && accessToken && accessToken !== 'local-demo') {
-      try { await writeFullAppDataToSheet(spreadsheetId, accessToken, newData); } catch {}
+    if (!spreadsheetId || !accessToken || accessToken === 'local-demo') return;
+    if (!navigator.onLine) return; // #12 não tenta sync offline
+    setSyncStatus('saving');
+    try {
+      await writeFullAppDataToSheet(spreadsheetId, accessToken, newData);
+      setSyncStatus('saved');
+      setTimeout(() => setSyncStatus('idle'), 2000);
+    } catch (e: any) {
+      // #1 Detectar token expirado
+      if (e.message?.includes('401') || e.message?.includes('403')) {
+        setTokenExpirado(true);
+      }
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus('idle'), 3000);
     }
   };
 
@@ -656,6 +699,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F8F7F3] text-slate-900 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
+      {/* Toast */}
       {toastMessage && (
         <div className="fixed top-4 right-4 z-50 bg-amber-500 text-slate-950 px-4 py-3 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 border border-amber-400">
           <Check className="w-4 h-4 stroke-[3]" />
@@ -663,10 +707,33 @@ export default function App() {
         </div>
       )}
 
-      {!isOnline && (
+      {/* #1 Banner token expirado */}
+      {tokenExpirado && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-rose-600 text-white text-xs font-semibold text-center py-2 flex items-center justify-center gap-3">
+          <span>Sessão expirada. Faça login novamente para continuar sincronizando.</span>
+          <button onClick={handleGoogleLogin} className="underline font-extrabold">Reconectar</button>
+        </div>
+      )}
+
+      {/* Offline banner */}
+      {!isOnline && !tokenExpirado && (
         <div className="fixed top-0 left-0 right-0 z-50 bg-slate-800 text-slate-300 text-xs font-semibold text-center py-1.5 flex items-center justify-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-rose-400 inline-block"></span>
+          <CloudOff className="w-3.5 h-3.5 text-rose-400" />
           Modo offline — mostrando dados salvos localmente
+        </div>
+      )}
+
+      {/* #8 Indicador de sincronização */}
+      {syncStatus !== 'idle' && isOnline && (
+        <div className={`fixed bottom-20 left-4 md:bottom-8 z-40 flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-lg transition-all ${
+          syncStatus === 'saving' ? 'bg-slate-800 text-slate-300 border border-slate-700' :
+          syncStatus === 'saved' ? 'bg-emerald-800 text-emerald-300 border border-emerald-700' :
+          'bg-rose-800 text-rose-300 border border-rose-700'
+        }`}>
+          {syncStatus === 'saving' && <SyncIcon className="w-3.5 h-3.5 animate-spin" />}
+          {syncStatus === 'saved' && <Cloud className="w-3.5 h-3.5" />}
+          {syncStatus === 'error' && <CloudOff className="w-3.5 h-3.5" />}
+          {syncStatus === 'saving' ? 'Salvando...' : syncStatus === 'saved' ? 'Sincronizado' : 'Erro ao salvar'}
         </div>
       )}
 
@@ -678,11 +745,12 @@ export default function App() {
         ministerio={currentMinisterio}
         spreadsheetId={spreadsheetId}
         isInstallable={isInstallable}
+        pendentesCount={pendentesCount}
         onInstallPwa={handleInstallPwa}
         onOpenSetup={() => setActiveTab('setup')}
       />
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
+      <main className={`flex-1 max-w-6xl w-full mx-auto px-4 py-6 ${tokenExpirado || !isOnline ? 'mt-8' : ''}`}>
         {activeTab === 'home' && (
           <HomeDashboard appData={appData} user={user} isLeader={isLeader} setActiveTab={setActiveTab}
             onSelectEscala={id => { setSelectedEscalaId(id); setActiveTab('escala_detalhe'); }}
@@ -733,6 +801,9 @@ export default function App() {
             onSavePerfil={handleSavePerfil} />
         )}
       </main>
+
+      {/* #11 Botão de feedback flutuante */}
+      <FeedbackButton user={user} accessToken={accessToken} ministerio={currentMinisterio} />
 
       <footer className="border-t border-slate-200/80 bg-[#F8F7F3] py-6 text-center text-xs text-slate-500 mb-16 md:mb-0">
         <p>Escalas de Louvor • Sistema de Gestão de Escalas e Ministérios</p>
