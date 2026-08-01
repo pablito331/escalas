@@ -20,7 +20,7 @@ import {
   registrarUsuario, buscarPermissaoUsuario, carregarMinisterioInfo,
   gerarTokenConvite, garantirAbaPermissoes, lerPermissoes,
 } from './services/permissoes';
-import { registrarNoIndice } from './services/indice';
+import { registrarNoIndice, buscarMinisterioPorEmail, adicionarEmailNoIndice } from './services/indice';
 import { LoginView } from './components/LoginView';
 import { OnboardingView } from './components/OnboardingView';
 import { AguardandoView } from './components/AguardandoView';
@@ -168,10 +168,19 @@ export default function App() {
       return;
     }
 
-    // Sem planilha → onboarding
+    // Sem planilha → tenta encontrar no índice pelo email
     if (!sheetId) {
-      setSession({ stage: 'onboarding' });
-      return;
+      // Busca silenciosa no índice central pelo email do usuário
+      const encontrado = await buscarMinisterioPorEmail(token, u.email).catch(() => null);
+      if (encontrado) {
+        // Encontrou — usa o spreadsheetId do índice
+        sheetId = encontrado.spreadsheet_id;
+        setSpreadsheetId(sheetId);
+        localStorage.setItem(STORAGE_KEYS.SPREADSHEET_ID, sheetId);
+      } else {
+        setSession({ stage: 'onboarding' });
+        return;
+      }
     }
 
     // Tem planilha → verifica permissão
@@ -447,6 +456,8 @@ export default function App() {
         }
         setAppData(dados);
         setSession({ stage: 'app', role: permissaoAtual.role, ministerio: info });
+        // Adiciona email no índice para login automático futuro
+        adicionarEmailNoIndice(accessToken, sheetId, user.email).catch(() => {});
       } else {
         setSession({ stage: 'aguardando_aprovacao', ministerio: info });
       }
@@ -468,6 +479,8 @@ export default function App() {
         const dados = await fetchSpreadsheetData(spreadsheetId, accessToken);
         setAppData(dados);
         setSession({ stage: 'app', role: permissao.role, ministerio });
+        // Adiciona email no índice para login automático futuro
+        adicionarEmailNoIndice(spreadsheetId, accessToken, user.email).catch(() => {});
         showToast('Acesso aprovado! Bem-vindo ao ministério.');
       } else {
         showToast('Ainda aguardando aprovação do líder.');
