@@ -28,7 +28,10 @@ async function garantirAbaIndice(accessToken: string): Promise<void> {
     `${SHEETS_API_BASE}/${INDICE_SPREADSHEET_ID}?fields=sheets.properties.title`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-  if (!metaRes.ok) throw new Error('Erro ao acessar planilha central.');
+  if (!metaRes.ok) {
+    const errText = await metaRes.text().catch(() => '');
+    throw new Error(`Erro ao acessar planilha central (${metaRes.status}): ${errText.slice(0, 100)}`);
+  }
 
   const meta = await metaRes.json();
   const titles: string[] = (meta.sheets || []).map((s: any) => s.properties?.title || '');

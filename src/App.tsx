@@ -692,7 +692,6 @@ export default function App() {
   if (session.stage === 'super_admin' && user && accessToken) {
     return <SuperAdminView user={user} accessToken={accessToken} onLogout={handleLogout} />;
   }
-
   // ── App principal ─────────────────────────────────────────────────────────
   const isLeader = session.stage === 'app' && (session.role === 'lider' || session.role === 'super_admin');
   const currentMinisterio = session.stage === 'app' ? session.ministerio : null;
