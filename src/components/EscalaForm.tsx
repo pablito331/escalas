@@ -77,10 +77,10 @@ export const EscalaForm: React.FC<EscalaFormProps> = ({
 
     // Default template with 4 empty volunteer slots
     return [
-      { id: 'v1', membro_id: '', funcoes: ['Ministro'] },
-      { id: 'v2', membro_id: '', funcoes: ['Vocal'] },
-      { id: 'v3', membro_id: '', funcoes: ['Violão'] },
-      { id: 'v4', membro_id: '', funcoes: ['Bateria'] },
+      { id: 'v1', membro_id: '', funcoes: [] },
+      { id: 'v2', membro_id: '', funcoes: [] },
+      { id: 'v3', membro_id: '', funcoes: [] },
+      { id: 'v4', membro_id: '', funcoes: [] },
     ];
   };
 
@@ -113,21 +113,13 @@ export const EscalaForm: React.FC<EscalaFormProps> = ({
   };
 
   const handleMemberChange = (index: number, newMembroId: string) => {
-    const selectedMember = appData.membros.find(m => m.id === newMembroId);
     setVolunteersList(prev =>
       prev.map((item, i) => {
         if (i !== index) return item;
-
-        // Auto-select member's primary/default functions if available and currently default
-        let updatedFuncoes = item.funcoes;
-        if (selectedMember && selectedMember.funcoes.length > 0) {
-          updatedFuncoes = selectedMember.funcoes;
-        }
-
         return {
           ...item,
           membro_id: newMembroId,
-          funcoes: updatedFuncoes,
+          funcoes: [], // começa sem nenhuma função selecionada — usuário escolhe
         };
       })
     );
@@ -354,17 +346,20 @@ export const EscalaForm: React.FC<EscalaFormProps> = ({
                   {vol.membro_id && (
                     <div className="pt-2 border-t border-slate-200/60 space-y-2">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-700">Funções / Instrumentos nesta escala:</span>
-                        {vol.funcoes.length > 0 && (
+                        <span className="font-bold text-slate-700">Funções nesta escala:</span>
+                        {vol.funcoes.length > 0 ? (
                           <span className="font-extrabold text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-md text-[11px]">
                             {vol.funcoes.join(' + ')}
                           </span>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">Selecione ao menos uma função</span>
                         )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5">
                         {DEFAULT_FUNCOES.map(f => {
                           const isSelected = vol.funcoes.includes(f);
+                          const isSugerido = selectedMember?.funcoes.includes(f) && !isSelected;
                           return (
                             <button
                               key={f}
@@ -373,14 +368,22 @@ export const EscalaForm: React.FC<EscalaFormProps> = ({
                               className={`px-3 py-1 rounded-full text-xs font-extrabold transition-all border ${
                                 isSelected
                                   ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                                  : isSugerido
+                                  ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
                                   : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300'
                               }`}
+                              title={isSugerido ? 'Função do perfil deste membro' : ''}
                             >
-                              {isSelected ? `✓ ${f}` : `+ ${f}`}
+                              {isSelected ? `✓ ${f}` : isSugerido ? `★ ${f}` : `+ ${f}`}
                             </button>
                           );
                         })}
                       </div>
+                      {selectedMember?.funcoes && selectedMember.funcoes.length > 0 && vol.funcoes.length === 0 && (
+                        <p className="text-[11px] text-amber-600 font-medium">
+                          ★ = funções cadastradas no perfil de {selectedMember.nome}
+                        </p>
+                      )}
                     </div>
                   )}
 
