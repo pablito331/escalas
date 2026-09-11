@@ -1,4 +1,4 @@
-const CACHE_NAME = 'escalalouvor-v2';
+const CACHE_NAME = 'escalalouvor-v3';
 const APP_SHELL = [
   '/escalas/',
   '/escalas/index.html',
