@@ -325,7 +325,7 @@ export const EscalaForm: React.FC<EscalaFormProps> = ({
                             const isUnavail = unavailableMap.has(membro.id);
                             return (
                               <option key={membro.id} value={membro.id}>
-                                {membro.nome} ({membro.funcoes.join(', ')}) {isUnavail ? '⚠️ [INDISPONÍVEL]' : ''}
+                                {membro.nome}{isUnavail ? ' ⚠️ [INDISPONÍVEL]' : ''}
                               </option>
                             );
                           })}

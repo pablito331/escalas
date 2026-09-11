@@ -36,6 +36,7 @@ import { DisponibilidadeView } from './components/DisponibilidadeView';
 import { SetupView } from './components/SetupView';
 import { PerfilView } from './components/PerfilView';
 import { FeedbackButton } from './components/FeedbackButton';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { Check, CloudOff, RefreshCw as SyncIcon, Cloud } from 'lucide-react';
 
 const STORAGE_KEYS = {
@@ -94,6 +95,19 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [pendentesCount, setPendentesCount] = useState(0);
   const [tokenExpirado, setTokenExpirado] = useState(false);
+
+  // Confirmação de exclusão
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    titulo: string;
+    descricao: string;
+    onConfirmar: () => void;
+  }>({ open: false, titulo: '', descricao: '', onConfirmar: () => {} });
+
+  const confirmar = (titulo: string, descricao: string, onConfirmar: () => void) => {
+    setConfirmDialog({ open: true, titulo, descricao, onConfirmar });
+  };
+  const fecharConfirm = () => setConfirmDialog(prev => ({ ...prev, open: false }));
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -587,15 +601,21 @@ export default function App() {
   };
 
   const handleDeleteEscala = (id: string) => {
-    setAppData(prev => {
-      const next = { ...prev, escalas: prev.escalas.filter(e => e.id !== id), escalados: prev.escalados.filter(e => e.escala_id !== id), repertorioEscala: prev.repertorioEscala.filter(re => re.escala_id !== id) };
-      syncToSheetIfConnected(next);
-      return next;
-    });
-    showToast('Escala excluída.');
-    setActiveTab('escalas');
+    confirmar(
+      'Excluir Escala',
+      'Isso removerá a escala, todos os escalados e o repertório associado. Não pode ser desfeito.',
+      () => {
+        setAppData(prev => {
+          const next = { ...prev, escalas: prev.escalas.filter(e => e.id !== id), escalados: prev.escalados.filter(e => e.escala_id !== id), repertorioEscala: prev.repertorioEscala.filter(re => re.escala_id !== id) };
+          syncToSheetIfConnected(next);
+          return next;
+        });
+        showToast('Escala excluída.');
+        setActiveTab('escalas');
+        fecharConfirm();
+      }
+    );
   };
-
   const handleAddMusica = (musica: Omit<Musica, 'id'>) => {
     const newSong: Musica = { ...musica, id: `mus_${Date.now()}` };
     setAppData(prev => { const next = { ...prev, repertorio: [newSong, ...prev.repertorio] }; syncToSheetIfConnected(next); return next; });
@@ -606,8 +626,15 @@ export default function App() {
     showToast('Música atualizada!');
   };
   const handleDeleteMusica = (id: string) => {
-    setAppData(prev => { const next = { ...prev, repertorio: prev.repertorio.filter(m => m.id !== id) }; syncToSheetIfConnected(next); return next; });
-    showToast('Música removida.');
+    confirmar(
+      'Remover Música',
+      'A música será removida do repertório. Não pode ser desfeito.',
+      () => {
+        setAppData(prev => { const next = { ...prev, repertorio: prev.repertorio.filter(m => m.id !== id) }; syncToSheetIfConnected(next); return next; });
+        showToast('Música removida.');
+        fecharConfirm();
+      }
+    );
   };
   const handleAddMembro = (membro: Omit<Membro, 'id'>) => {
     const newMembro: Membro = { ...membro, id: `m_${Date.now()}` };
@@ -619,8 +646,16 @@ export default function App() {
     showToast('Membro atualizado!');
   };
   const handleDeleteMembro = (id: string) => {
-    setAppData(prev => { const next = { ...prev, membros: prev.membros.filter(m => m.id !== id) }; syncToSheetIfConnected(next); return next; });
-    showToast('Membro removido.');
+    confirmar(
+      'Remover Membro',
+      'O membro será removido da equipe. Não pode ser desfeito.',
+      () => {
+        setAppData(prev => { const next = { ...prev, membros: prev.membros.filter(m => m.id !== id) }; syncToSheetIfConnected(next); return next; });
+        showToast('Membro removido.');
+        fecharConfirm();
+      }
+    );
+  };
   };
   const handleAddDisponibilidade = (membroId: string, dataIndisponivel: string, motivo: string) => {
     const newInd: Indisponibilidade = { id: `ind_${Date.now()}`, membro_id: membroId, data_indisponivel: dataIndisponivel, motivo };
@@ -816,6 +851,15 @@ export default function App() {
 
       {/* #11 Botão de feedback flutuante */}
       <FeedbackButton user={user} accessToken={accessToken} ministerio={currentMinisterio} />
+
+      {/* Confirmação de exclusão */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        titulo={confirmDialog.titulo}
+        descricao={confirmDialog.descricao}
+        onConfirmar={confirmDialog.onConfirmar}
+        onCancelar={fecharConfirm}
+      />
 
       <footer className="border-t border-slate-200/80 bg-[#F8F7F3] py-6 text-center text-xs text-slate-500 mb-16 md:mb-0">
         <p>Escalas de Louvor • Sistema de Gestão de Escalas e Ministérios</p>
